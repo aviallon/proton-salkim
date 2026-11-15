@@ -9,7 +9,7 @@ from unittest import mock
 
 from proton_config import Settings
 import upscalers
-from upscalers import fsr, storage
+from upscalers import ffx, fsr, storage
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -38,6 +38,9 @@ class LauncherIntegration(unittest.TestCase):
         progress = mock.patch.object(upscalers.progress, "Progress")
         progress.start()
         self.addCleanup(progress.stop)
+        sdk = mock.patch.object(ffx, "setup", return_value=True)
+        self.sdk = sdk.start()
+        self.addCleanup(sdk.stop)
 
     def run_setup(self, mode='waitforexitandrun', command=None):
         return upscalers.setup(self.env,
@@ -74,6 +77,23 @@ class LauncherIntegration(unittest.TestCase):
         fixes = text.index('    protonfixes.execute()', legacy)
         self.assertLess(legacy, new)
         self.assertLess(new, fixes)
+
+    def test_sdk_follows_provider_readiness_and_preserves_explicit_path(self):
+        with mock.patch.object(fsr, "setup", return_value=True):
+            self.assertTrue(self.run_setup())
+        self.sdk.assert_called_once()
+        self.sdk.reset_mock()
+        with mock.patch.object(fsr, "setup", return_value=False):
+            self.assertFalse(self.run_setup())
+            self.sdk.assert_not_called()
+            self.env["WINE_FFX_PROVIDER"] = "/manual/sdk"
+            self.run_setup()
+            self.sdk.assert_called_once()
+
+    def test_sdk_failure_keeps_the_driver_provider(self):
+        with mock.patch.object(fsr, "setup", return_value=True):
+            self.sdk.return_value = False
+            self.assertTrue(self.run_setup())
 
     def test_gpu_eligibility_uses_vendor_and_capability(self):
         self.assertFalse(upscalers.eligible_amd([]))

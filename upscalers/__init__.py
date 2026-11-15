@@ -2,7 +2,7 @@
 
 import platform
 
-from . import fsr, progress
+from . import ffx, fsr, progress
 
 
 _HELPERS = frozenset((
@@ -39,8 +39,12 @@ def setup(env, *, mode, command, gpu_query, log=print):
         return False
     try:
         with progress.Progress(log=log) as reporter:
-            return fsr.setup(env, gpu_eligible=lambda: eligible_amd(gpu_query()),
-                             progress=reporter.update, log=log)
+            provider_ready = fsr.setup(env, gpu_eligible=lambda: eligible_amd(gpu_query()),
+                                       progress=reporter.update, log=log)
+        if provider_ready or env.get("WINE_FFX_PROVIDER"):
+            with progress.Progress(log=log) as reporter:
+                ffx.setup(env, progress=reporter.update, log=log)
+        return provider_ready
     except Exception as error:
         log("FSR component setup failed; keeping the current game configuration: " + str(error))
         return False

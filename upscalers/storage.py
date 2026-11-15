@@ -73,31 +73,39 @@ def report(progress, stage, done, total):
         raise ComponentError("FSR component preparation cancelled")
 
 
-def download(release, destination, progress=None):
-    archive = release["archive"]
-    headers = {"User-Agent": "Mozilla/5.0 (compatible; Proton component manager)",
-               "Referer": release["release_notes"]}
-    request = urllib.request.Request(archive["url"], headers=headers)
+def download_file(item, destination, progress=None, *, hosts, referer=None):
+    address = urlparse(item["url"])
+    if address.scheme != "https" or address.hostname not in hosts:
+        raise ComponentError("Unrecognised component download source")
+    headers = {"User-Agent": "Mozilla/5.0 (compatible; Proton component manager)"}
+    if referer:
+        headers["Referer"] = referer
+    request = urllib.request.Request(item["url"], headers=headers)
     digest = hashlib.sha256()
     received = 0
-    report(progress, "download", 0, archive["size"])
+    report(progress, "download", 0, item["size"])
     with urllib.request.urlopen(request, timeout=30) as response:
         address = urlparse(response.geturl())
-        if address.scheme != "https" or address.hostname not in ("drivers.amd.com", "download.amd.com"):
-            raise ComponentError("AMD did not return the requested driver download")
+        if address.scheme != "https" or address.hostname not in hosts:
+            raise ComponentError("Unrecognised component download source")
         with Path(destination).open("wb") as output:
             while True:
                 block = response.read(1024 * 1024)
                 if not block:
                     break
                 received += len(block)
-                if received > archive["size"]:
-                    raise ComponentError("AMD driver download exceeds its recorded size")
+                if received > item["size"]:
+                    raise ComponentError("Component download exceeds its recorded size")
                 output.write(block)
                 digest.update(block)
-                report(progress, "download", received, archive["size"])
-    if received != archive["size"] or digest.hexdigest() != archive["sha256"]:
-        raise ComponentError("AMD driver download does not match the selected release")
+                report(progress, "download", received, item["size"])
+    if received != item["size"] or digest.hexdigest() != item["sha256"]:
+        raise ComponentError("Component download does not match the selected release")
+
+
+def download(release, destination, progress=None):
+    download_file(release["archive"], destination, progress,
+                  hosts=("drivers.amd.com", "download.amd.com"), referer=release["release_notes"])
 
 
 def extract(archive, release, destination, progress=None, *, program):
