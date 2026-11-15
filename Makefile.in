@@ -2064,6 +2064,15 @@ $(UPSCALERS_TARGET): $(wildcard $(SRCDIR)/upscalers/*.py) $(wildcard $(SRCDIR)/u
 
 all-dist: $(UPSCALERS_TARGET)
 
+WIREGUARD_TARGET := $(DST_BASE)/wireguard/.stamp
+$(WIREGUARD_TARGET): $(wildcard $(SRCDIR)/wireguard/*.exe) $(wildcard $(SRCDIR)/wireguard/*.c) \
+                     $(SRCDIR)/wireguard/README.md $(SRCDIR)/wireguard $(SRCDIR)/Makefile.in | $(DST_DIR)
+	mkdir -p $(DST_BASE)/wireguard
+	rsync --delete --delete-excluded -arx $(SRCDIR)/wireguard/ $(DST_BASE)/wireguard/
+	touch $@
+
+all-dist: $(WIREGUARD_TARGET)
+
 DIST_COPY_TARGETS := $(FILELOCK_TARGET) $(PROTON_PY_TARGET) $(PROTON_CONFIG_TARGET) $(PROTON_CONFIG_SAMPLE_TARGET) \
                      $(VULKAN_BINDINGS_TARGET) $(UTILITIES_TARGET) $(DESKTOP_MONITOR_TARGET) $(VULKAN_LAYERS_TARGET) $(MESA_TARGET) \
                      $(PROTON37_TRACKED_FILES_TARGET) $(USER_SETTINGS_PY_TARGET)
