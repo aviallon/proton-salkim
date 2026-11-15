@@ -228,6 +228,18 @@ Game settings override `[global]`. Explicit launch environment variables take
 precedence over their saved values. Non-Steam launchers can use `[umu:<UMU_ID>]`.
 
 
+How are AMD FSR upgrades managed?
+--------------------------------
+
+On compatible AMD GPUs, Proton automatically installs the FSR provider selected
+by its bundled manifest. A progress window appears during download and extraction;
+installed components are reused under `~/.local/share/proton/components/`.
+Game files are left untouched. 7-Zip is downloaded if missing.
+
+Use `WINE_FSR4_LITE=1` to request Lite on RDNA 2/3/3.5; leave it unset for automatic
+model selection. Select FSR and frame generation in the game's settings as usual.
+
+
 How do I enable the HUD with PROTON_HUD?
 ---------------------------------------
 

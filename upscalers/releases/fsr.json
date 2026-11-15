@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "default": "26.10.2",
+  "releases": {
+    "26.10.2": {
+      "version": "26.10.2",
+      "architecture": "x86_64",
+      "release_notes": "https://www.amd.com/en/resources/support-articles/release-notes/RN-RAD-WIN-26-10-2.html",
+      "archive": {
+        "url": "https://drivers.amd.com/drivers/whql-amd-software-adrenalin-edition-26.10.2-win11-b.exe",
+        "size": 1026509160,
+        "sha256": "b003a0caa9f9d53f957539530171f6be467dbd90bbb3d8964c43d6de68da0d2b"
+      },
+      "provider": {
+        "member": "Packages/Drivers/Display/WT6A_INF/B026716/amdxcffx64.dll",
+        "size": 85684096,
+        "sha256": "f253c715e400627c1678f2062363aaade4642a5ce2e2ccfe6109995c7c1a074a",
+        "file_version": "2.4.0.4541"
+      }
+    }
+  }
+}
