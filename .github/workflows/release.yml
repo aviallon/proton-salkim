@@ -57,7 +57,7 @@ jobs:
           gh release create "$GITHUB_REF_NAME" \
             --latest \
             --title "$GITHUB_REF_NAME" \
-            --notes-from-tag \
+            --notes "Wineland with the sc queryex patch and the wireguard.exe port." \
             --verify-tag
         fi
       env:
@@ -69,9 +69,8 @@ jobs:
     strategy:
       matrix:
         include:
-          - name: proton-${{ github.ref_name }}-x86_64
-          - name: proton-${{ github.ref_name }}-x86_64_v3
-          - name: proton-${{ github.ref_name }}-x86_64_wow64
+          - name: proton-${{ github.ref_name }}-x86_64_v3-wow64
+          - name: proton-${{ github.ref_name }}-x86_64_v2-wow64
     uses: ./.github/workflows/_job_upload.yml
     with:
       version: ${{ github.ref_name }}
