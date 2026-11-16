@@ -39,7 +39,7 @@ PORT_DOS_DIR = "C:\\Program Files\\WireGuard\\"
 
 def has_settlers_united(prefix_dir: Path) -> bool:
     """Whether this prefix has a Settlers United installation."""
-    drive_c = prefix_dir / "drive_c"
+    drive_c = Path(str(prefix_dir)) / "drive_c"
     for marker in MARKERS:
         pattern = (
             drive_c / marker if "*" not in marker else Path(str(drive_c) + "/" + marker)
@@ -47,6 +47,20 @@ def has_settlers_united(prefix_dir: Path) -> bool:
         if glob.glob(str(pattern)):
             return True
     return False
+
+
+def _say(log, level: str, message: str) -> None:
+    """Report through the launcher's logger, whatever it exposes, or stderr."""
+    names = (level, "warn") if level == "warning" else (level,)
+    for name in names:
+        method = getattr(log, name, None)
+        if callable(method):
+            try:
+                method(message)
+                return
+            except TypeError:
+                continue
+    print(f"[wireguard] {message}", file=sys.stderr)
 
 
 def _registry_path(wine, env) -> str | None:
@@ -75,7 +89,7 @@ def ensure_path_entry(wine, env, log, dry_run: bool = False) -> bool:
     """Add the port directory to the system Path, as the official MSI does."""
     current = _registry_path(wine, env)
     if current is None:
-        log.warning("could not read the system Path, leaving it alone")
+        _say(log, "warning", "could not read the system Path, leaving it alone")
         return False
     entries = [entry.strip() for entry in current.split(";")]
     if PORT_DOS_DIR.rstrip("\\") in [entry.rstrip("\\") for entry in entries]:
@@ -83,7 +97,7 @@ def ensure_path_entry(wine, env, log, dry_run: bool = False) -> bool:
 
     value = current.rstrip(";") + ";" + PORT_DOS_DIR
     if dry_run:
-        log.info(f"would set the system Path to {value}")
+        _say(log, "info", f"would set the system Path to {value}")
         return True
 
     try:
@@ -108,42 +122,50 @@ def ensure_path_entry(wine, env, log, dry_run: bool = False) -> bool:
             check=False,
         )
     except (OSError, subprocess.SubprocessError) as exc:
-        log.warning(f"could not extend the system Path: {exc}")
+        _say(log, "warning", f"could not extend the system Path: {exc}")
         return False
     if result.returncode != 0:
-        log.warning(f"could not extend the system Path: {result.stderr.strip()}")
+        _say(
+            log, "warning", f"could not extend the system Path: {result.stderr.strip()}"
+        )
         return False
-    log.info("added C:\\Program Files\\WireGuard to the system Path")
+    _say(log, "info", "added C:\\Program Files\\WireGuard to the system Path")
     return True
 
 
-def install(
-    env, proton_dir: Path, prefix_dir: Path, wine, log, dry_run: bool = False
-) -> None:
-    """Put the port where Settlers United looks for it, if it is installed here."""
+def install(env, proton_dir, prefix_dir, wine, log, dry_run: bool = False) -> None:
+    """Put the port where Settlers United looks for it, if it is installed here.
+
+    The launcher passes g_compatdata.prefix_dir (a string ending in a slash) and
+    its own directory as plain strings, so nothing here may assume Path objects.
+    """
+    proton_dir = Path(str(proton_dir))
+    prefix_dir = Path(str(prefix_dir))
     if not has_settlers_united(prefix_dir):
         return
 
     source = Path(proton_dir) / "wireguard" / PORT_NAME
     if not source.is_file():
-        log.warning(
-            f"{source} is missing from this Proton build, cannot install the WireGuard port"
+        _say(
+            log,
+            "warning",
+            f"{source} is missing from this Proton build, cannot install the WireGuard port",
         )
         return
 
     target = prefix_dir / "drive_c" / PORT_DIR / PORT_NAME
     if target.is_file() and target.read_bytes() == source.read_bytes():
-        log.debug(f"{target} is up to date")
+        _say(log, "debug", f"{target} is up to date")
     elif dry_run:
-        log.info(f"would install {source} -> {target}")
+        _say(log, "info", f"would install {source} -> {target}")
     else:
         try:
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source, target)
         except OSError as exc:
-            log.warning(f"could not install the WireGuard port: {exc}")
+            _say(log, "warning", f"could not install the WireGuard port: {exc}")
             return
-        log.info(f"installed the WireGuard port into {target.parent}")
+        _say(log, "info", f"installed the WireGuard port into {target.parent}")
 
     ensure_path_entry(wine, env, log, dry_run=dry_run)
 
