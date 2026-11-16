@@ -58,6 +58,7 @@ import vulkan_layers
 #and edit it if needed.
 import utilities
 import upscalers
+import wireguard_port
 
 
 CURRENT_PREFIX_VERSION="CachyOS-11.0-100"
@@ -2611,6 +2612,11 @@ if __name__ == "__main__":
     upscalers.setup(g_session.env,
                     mode=sys.argv[1], command=sys.argv[2:], log=log,
                     gpu_query=utilities.get_vulkan_gpus)
+    wireguard_port.install(g_session.env,
+                           proton_dir=os.path.dirname(os.path.realpath(__file__)),
+                           prefix_dir=g_compatdata.prefix_dir,
+                           wine=g_proton.wine_bin,
+                           log=log)
     protonfixes.execute()
 
     #determine mode
