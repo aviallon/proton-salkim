@@ -17,6 +17,7 @@ Nothing here touches a prefix that does not contain Settlers United.
 
 import glob
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -63,6 +64,20 @@ def _say(log, level: str, message: str) -> None:
     print(f"[wireguard] {message}", file=sys.stderr)
 
 
+def _decode(raw: bytes) -> str:
+    """Decode wine's output: it is usually ASCII, but a redirected `reg` can hand
+    back UTF-16 with a BOM (seen as UnicodeDecodeError 0xff), and never mind a
+    non-UTF-8 console codepage."""
+    if raw[:2] in (b"\xff\xfe", b"\xfe\xff"):
+        return raw.decode("utf-16", errors="replace")
+    for encoding in ("utf-8", "cp1252"):
+        try:
+            return raw.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    return raw.decode("latin-1", errors="replace")
+
+
 def _registry_path(wine, env) -> str | None:
     """Current value of the system Path, or None if it cannot be read."""
     try:
@@ -70,7 +85,6 @@ def _registry_path(wine, env) -> str | None:
             [str(wine), "reg", "query", PATH_KEY, "/v", "Path"],
             env=env,
             capture_output=True,
-            text=True,
             timeout=120,
             check=False,
         )
@@ -78,10 +92,16 @@ def _registry_path(wine, env) -> str | None:
         return None
     if result.returncode != 0:
         return None
-    for line in result.stdout.replace("\r", "").splitlines():
-        fields = line.split("    ")
-        if len(fields) >= 4 and fields[1].lower() == "path":
-            return fields[3]
+    text = _decode(result.stdout or b"").replace("\ufeff", "")
+    for line in text.replace("\r", "").splitlines():
+        if "REG_" not in line or "path" not in line.lower():
+            continue
+        fields = [field for field in re.split(r"\s{2,}", line.strip()) if field]
+        # ["Path", "REG_EXPAND_SZ", "<value>"]
+        if len(fields) >= 3 and fields[0].lower() == "path":
+            return fields[2]
+        if len(fields) >= 2 and fields[0].lower() == "path":
+            return fields[-1]
     return None
 
 
@@ -139,6 +159,13 @@ def install(env, proton_dir, prefix_dir, wine, log, dry_run: bool = False) -> No
     The launcher passes g_compatdata.prefix_dir (a string ending in a slash) and
     its own directory as plain strings, so nothing here may assume Path objects.
     """
+    try:
+        _install(proton_dir, prefix_dir, wine, env, log, dry_run)
+    except Exception as exc:  # noqa: BLE001 - never break the launcher over this
+        _say(log, "warning", f"WireGuard port step skipped: {exc}")
+
+
+def _install(proton_dir, prefix_dir, wine, env, log, dry_run: bool) -> None:
     proton_dir = Path(str(proton_dir))
     prefix_dir = Path(str(prefix_dir))
     if not has_settlers_united(prefix_dir):

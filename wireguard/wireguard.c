@@ -236,12 +236,66 @@ static BOOL run_helper( const char *action, const char *name, const WCHAR *conf 
     return TRUE;
 }
 
+/* Wine's services.exe locks its service database briefly right after a prefix
+ * is booted and answers ERROR_SERVICE_DATABASE_LOCKED meanwhile, which a fresh
+ * prefix plus an immediate launch hits every time. Retry only that error. */
+#define SCM_ATTEMPTS 40
+#define SCM_DELAY_MS 200
+
+typedef BOOL (*scm_call)( void *context );
+
+static BOOL scm_retry( scm_call call, void *context )
+{
+    DWORD attempt;
+    BOOL ok;
+
+    for (attempt = 0; attempt < SCM_ATTEMPTS; attempt++)
+    {
+        SetLastError( 0 );
+        ok = call( context );
+        if (ok || GetLastError() != ERROR_SERVICE_DATABASE_LOCKED) return ok;
+        Sleep( SCM_DELAY_MS );
+    }
+    return FALSE;
+}
+
 static WCHAR *service_name( const WCHAR *name )
 {
     static WCHAR buffer[128];
 
     swprintf( buffer, ARRAYSIZE(buffer), TUNNEL_SERVICE_PREFIX L"%ls", name );
     return buffer;
+}
+
+struct create_args
+{
+    SC_HANDLE manager;
+    const WCHAR *service_name;
+    const WCHAR *display;
+    const WCHAR *binpath;
+    const WCHAR *deps;
+    SC_HANDLE service;
+};
+
+static BOOL create_service_call( void *context )
+{
+    struct create_args *args = context;
+
+    args->service = CreateServiceW( args->manager, args->service_name, args->display,
+                                    SERVICE_ALL_ACCESS, SERVICE_WIN32_OWN_PROCESS,
+                                    SERVICE_DEMAND_START, SERVICE_ERROR_NORMAL, args->binpath,
+                                    NULL, NULL, args->deps, L"LocalSystem", NULL );
+    return args->service != NULL;
+}
+
+struct start_args
+{
+    SC_HANDLE service;
+};
+
+static BOOL start_service_call( void *context )
+{
+    return StartServiceW( ((struct start_args *)context)->service, 0, NULL );
 }
 
 static BOOL create_service( const WCHAR *name, const WCHAR *conf )
@@ -261,9 +315,11 @@ static BOOL create_service( const WCHAR *name, const WCHAR *conf )
     swprintf( display, ARRAYSIZE(display), L"WireGuard Tunnel: %ls", name );
 
     if (!(manager = OpenSCManagerW( NULL, NULL, SC_MANAGER_CREATE_SERVICE ))) return FALSE;
-    service = CreateServiceW( manager, service_name( name ), display, SERVICE_ALL_ACCESS,
-                              SERVICE_WIN32_OWN_PROCESS, SERVICE_DEMAND_START, SERVICE_ERROR_NORMAL,
-                              binpath, NULL, NULL, deps, L"LocalSystem", NULL );
+    {
+        struct create_args args = { manager, service_name( name ), display, binpath, deps };
+
+        if (scm_retry( create_service_call, &args )) service = args.service;
+    }
     if (service) ok = TRUE;
     else if (GetLastError() == ERROR_SERVICE_EXISTS)
     {
@@ -338,7 +394,9 @@ static BOOL start_service( const WCHAR *name )
     if (!(manager = OpenSCManagerW( NULL, NULL, SC_MANAGER_CONNECT ))) return FALSE;
     if ((service = OpenServiceW( manager, service_name( name ), SERVICE_START )))
     {
-        if (StartServiceW( service, 0, NULL )) ok = TRUE;
+        struct start_args args = { service };
+
+        if (scm_retry( start_service_call, &args )) ok = TRUE;
         else if (GetLastError() == ERROR_SERVICE_ALREADY_RUNNING) ok = TRUE;
         else log_msg( "could not start %ls: error %lu", service_name( name ), GetLastError() );
         CloseServiceHandle( service );
